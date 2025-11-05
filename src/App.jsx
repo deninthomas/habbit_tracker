@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import './App.css';
 
 function App() {
   const [habits, setHabits] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState('home');
   const [selectedHabit, setSelectedHabit] = useState(null);
   const [noteText, setNoteText] = useState('');
   
@@ -21,6 +21,11 @@ function App() {
     if (savedHabits) {
       setHabits(JSON.parse(savedHabits));
     }
+  }, []);
+
+  // Set document title to app name
+  useEffect(() => {
+    document.title = 'Habit Hero  ';
   }, []);
 
   // Save habits to localStorage
@@ -54,24 +59,16 @@ function App() {
   };
 
   const handleCheckIn = (habitId, date) => {
-    setHabits(habits.map(habit => {
-      if (habit.id === habitId) {
-        const checkIns = habit.checkIns || [];
-        const dateStr = date || new Date().toISOString().split('T')[0];
-        
-        if (checkIns.includes(dateStr)) {
-          return {
-            ...habit,
-            checkIns: checkIns.filter(d => d !== dateStr)
-          };
-        } else {
-          return {
-            ...habit,
-            checkIns: [...checkIns, dateStr]
-          };
-        }
+    setHabits(prev => prev.map(habit => {
+      if (habit.id !== habitId) return habit;
+      const checkIns = habit.checkIns || [];
+      const dateStr = date || new Date().toISOString().split('T')[0];
+
+      if (checkIns.includes(dateStr)) {
+        return { ...habit, checkIns: checkIns.filter(d => d !== dateStr) };
       }
-      return habit;
+
+      return { ...habit, checkIns: [...checkIns, dateStr] };
     }));
   };
 
@@ -95,8 +92,14 @@ function App() {
 
   const deleteHabit = (habitId) => {
     if (window.confirm('Are you sure you want to delete this habit?')) {
-      setHabits(habits.filter(habit => habit.id !== habitId));
+      const newHabits = habits.filter(habit => habit.id !== habitId);
+      setHabits(newHabits);
       setSelectedHabit(null);
+      setActiveView('home');
+      // reload after a short delay so localStorage is updated and UI fully refreshes
+      setTimeout(() => {
+        window.location.reload();
+      }, 150);
     }
   };
 
@@ -320,6 +323,7 @@ function App() {
 
   const renderAnalytics = () => (
     <div className="analytics-view">
+      <br />
       <h2>Analytics</h2>
       {habits.length === 0 ? (
         <div className="empty-state">
@@ -373,7 +377,7 @@ function App() {
           className="btn-back"
           onClick={() => {
             setSelectedHabit(null);
-            setActiveView('dashboard');
+            setActiveView('home');
           }}
         >
           ← Back
@@ -461,37 +465,23 @@ function App() {
 
   return (
     <div className="App">
-      <header className="app-header">
-        <div className="header-content">
-          <h1>🎯 Habit Hero</h1>
-          <p className="tagline">Build better routines and stay consistent</p>
-        </div>
-      </header>
-
       <nav className="nav-bar">
-        <button 
-          className={`nav-btn ${activeView === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setActiveView('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button 
-          className={`nav-btn ${activeView === 'calendar' ? 'active' : ''}`}
-          onClick={() => setActiveView('calendar')}
-        >
-          Calendar
-        </button>
-        <button 
-          className={`nav-btn ${activeView === 'analytics' ? 'active' : ''}`}
-          onClick={() => setActiveView('analytics')}
-        >
-          Analytics
-        </button>
+        <div className="nav-left">
+          <div className="header-content">
+            <h1>Habit Hero</h1>
+           
+          </div>
+        </div>
       </nav>
 
       <main className="main-content">
-        {activeView === 'dashboard' && renderDashboard()}
-        {activeView === 'calendar' && renderCalendar()}
+        {activeView === 'home' && (
+          <>
+            {renderDashboard()}
+            {renderCalendar()}
+            {renderAnalytics()}
+          </>
+        )}
         {activeView === 'analytics' && renderAnalytics()}
         {activeView === 'details' && renderDetails()}
       </main>
@@ -564,6 +554,22 @@ function App() {
           </div>
         </div>
       )}
+      <footer className="app-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <h3>Habit Hero</h3>
+            <p className="tagline">Build better routines and stay consistent</p>
+          </div>
+
+          <nav className="footer-nav" aria-label="Footer">
+            <a href="#" onClick={(e) => e.preventDefault()}>Privacy</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>Terms</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>Contact</a>
+          </nav>
+
+          <div className="footer-copy">© {new Date().getFullYear()} Habit Hero. All rights reserved.</div>
+        </div>
+      </footer>
     </div>
   );
 }

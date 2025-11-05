@@ -1,0 +1,571 @@
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [habits, setHabits] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [activeView, setActiveView] = useState('dashboard');
+  const [selectedHabit, setSelectedHabit] = useState(null);
+  const [noteText, setNoteText] = useState('');
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    frequency: 'daily',
+    category: 'health',
+    startDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Load habits from localStorage
+  useEffect(() => {
+    const savedHabits = localStorage.getItem('habits');
+    if (savedHabits) {
+      setHabits(JSON.parse(savedHabits));
+    }
+  }, []);
+
+  // Save habits to localStorage
+  useEffect(() => {
+    localStorage.setItem('habits', JSON.stringify(habits));
+  }, [habits]);
+
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newHabit = {
+      id: Date.now(),
+      ...formData,
+      checkIns: [],
+      notes: []
+    };
+    setHabits([...habits, newHabit]);
+    setFormData({
+      name: '',
+      frequency: 'daily',
+      category: 'health',
+      startDate: new Date().toISOString().split('T')[0]
+    });
+    setShowForm(false);
+  };
+
+  const handleCheckIn = (habitId, date) => {
+    setHabits(habits.map(habit => {
+      if (habit.id === habitId) {
+        const checkIns = habit.checkIns || [];
+        const dateStr = date || new Date().toISOString().split('T')[0];
+        
+        if (checkIns.includes(dateStr)) {
+          return {
+            ...habit,
+            checkIns: checkIns.filter(d => d !== dateStr)
+          };
+        } else {
+          return {
+            ...habit,
+            checkIns: [...checkIns, dateStr]
+          };
+        }
+      }
+      return habit;
+    }));
+  };
+
+  const addNote = (habitId, note) => {
+    if (!note.trim()) return;
+    
+    setHabits(habits.map(habit => {
+      if (habit.id === habitId) {
+        return {
+          ...habit,
+          notes: [...(habit.notes || []), {
+            id: Date.now(),
+            text: note,
+            date: new Date().toISOString().split('T')[0]
+          }]
+        };
+      }
+      return habit;
+    }));
+  };
+
+  const deleteHabit = (habitId) => {
+    if (window.confirm('Are you sure you want to delete this habit?')) {
+      setHabits(habits.filter(habit => habit.id !== habitId));
+      setSelectedHabit(null);
+    }
+  };
+
+  const calculateStreak = (habit) => {
+    const checkIns = habit.checkIns || [];
+    if (checkIns.length === 0) return 0;
+    
+    const sortedDates = checkIns.sort((a, b) => new Date(b) - new Date(a));
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < sortedDates.length; i++) {
+      const checkDate = new Date(sortedDates[i]);
+      checkDate.setHours(0, 0, 0, 0);
+      const expectedDate = new Date(today);
+      expectedDate.setDate(today.getDate() - i);
+      
+      if (checkDate.getTime() === expectedDate.getTime()) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
+  };
+
+  const calculateSuccessRate = (habit) => {
+    const startDate = new Date(habit.startDate);
+    const today = new Date();
+    const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    const checkIns = habit.checkIns || [];
+    
+    if (daysPassed <= 0) return 0;
+    return Math.round((checkIns.length / daysPassed) * 100);
+  };
+
+  const getBestDay = (habit) => {
+    const checkIns = habit.checkIns || [];
+    if (checkIns.length === 0) return 'No data';
+    
+    const dayCounts = {};
+    checkIns.forEach(dateStr => {
+      const day = new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' });
+      dayCounts[day] = (dayCounts[day] || 0) + 1;
+    });
+    
+    let maxDay = '';
+    let maxCount = 0;
+    for (const [day, count] of Object.entries(dayCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        maxDay = day;
+      }
+    }
+    
+    return maxDay || 'No data';
+  };
+
+  const isCheckedToday = (habit) => {
+    const today = new Date().toISOString().split('T')[0];
+    return (habit.checkIns || []).includes(today);
+  };
+
+  const getCategoryIcon = (category) => {
+    const icons = {
+      health: '💪',
+      work: '💼',
+      learning: '📚',
+      fitness: '🏃',
+      'mental health': '🧘',
+      productivity: '⚡'
+    };
+    return icons[category] || '⭐';
+  };
+
+  const getCalendarDays = () => {
+    const today = new Date();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      days.push(date);
+    }
+    return days;
+  };
+
+  const renderDashboard = () => (
+    <div className="dashboard">
+      <div className="stats-grid">
+        <div className="stat-card">
+          <h3>Total Habits</h3>
+          <p className="stat-number">{habits.length}</p>
+        </div>
+        <div className="stat-card">
+          <h3>Completed Today</h3>
+          <p className="stat-number">
+            {habits.filter(h => isCheckedToday(h)).length}
+          </p>
+        </div>
+        <div className="stat-card">
+          <h3>Success Rate</h3>
+          <p className="stat-number">
+            {habits.length > 0 
+              ? Math.round(habits.reduce((acc, h) => acc + calculateSuccessRate(h), 0) / habits.length)
+              : 0}%
+          </p>
+        </div>
+        <div className="stat-card">
+          <h3>Best Streak</h3>
+          <p className="stat-number">
+            {habits.length > 0 
+              ? Math.max(...habits.map(h => calculateStreak(h)), 0)
+              : 0} days
+          </p>
+        </div>
+      </div>
+
+      <div className="habits-list">
+        <div className="section-header">
+          <h2>Your Habits</h2>
+          <button className="btn-primary" onClick={() => setShowForm(true)}>
+            + Add Habit
+          </button>
+        </div>
+
+        {habits.length === 0 ? (
+          <div className="empty-state">
+            <p>No habits yet. Start building better routines!</p>
+          </div>
+        ) : (
+          <div className="habit-cards">
+            {habits.map(habit => (
+              <div key={habit.id} className="habit-card">
+                <div className="habit-header">
+                  <div className="habit-title">
+                    <span className="category-icon">{getCategoryIcon(habit.category)}</span>
+                    <h3>{habit.name}</h3>
+                  </div>
+                  <button 
+                    className={`check-btn ${isCheckedToday(habit) ? 'checked' : ''}`}
+                    onClick={() => handleCheckIn(habit.id)}
+                  >
+                    {isCheckedToday(habit) ? '✓' : '○'}
+                  </button>
+                </div>
+                <div className="habit-meta">
+                  <span className="badge">{habit.frequency}</span>
+                  <span className="badge">{habit.category}</span>
+                </div>
+                <div className="habit-stats">
+                  <div className="stat-item">
+                    <span className="stat-label">Streak</span>
+                    <span className="stat-value">{calculateStreak(habit)} days</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Success</span>
+                    <span className="stat-value">{calculateSuccessRate(habit)}%</span>
+                  </div>
+                </div>
+                <button 
+                  className="btn-secondary"
+                  onClick={() => {
+                    setSelectedHabit(habit);
+                    setActiveView('details');
+                  }}
+                >
+                  View Details
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCalendar = () => {
+    const days = getCalendarDays();
+    
+    return (
+      <div className="calendar-view">
+        <h2>Weekly Calendar</h2>
+        <div className="calendar-grid">
+          {days.map(date => {
+            const dateStr = date.toISOString().split('T')[0];
+            return (
+              <div key={dateStr} className="calendar-day">
+                <div className="day-header">
+                  <span className="day-name">
+                    {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                  </span>
+                  <span className="day-number">
+                    {date.getDate()}
+                  </span>
+                </div>
+                <div className="day-habits">
+                  {habits.map(habit => {
+                    const isChecked = (habit.checkIns || []).includes(dateStr);
+                    return (
+                      <div 
+                        key={habit.id}
+                        className={`calendar-habit ${isChecked ? 'checked' : ''}`}
+                        onClick={() => handleCheckIn(habit.id, dateStr)}
+                      >
+                        <span>{getCategoryIcon(habit.category)}</span>
+                        <span className="habit-name-short">{habit.name}</span>
+                        {isChecked && <span className="check-mark">✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAnalytics = () => (
+    <div className="analytics-view">
+      <h2>Analytics</h2>
+      {habits.length === 0 ? (
+        <div className="empty-state">
+          <p>No habits to analyze yet.</p>
+        </div>
+      ) : (
+        <div className="analytics-grid">
+          {habits.map(habit => (
+            <div key={habit.id} className="analytics-card">
+              <div className="analytics-header">
+                <span className="category-icon">{getCategoryIcon(habit.category)}</span>
+                <h3>{habit.name}</h3>
+              </div>
+              <div className="analytics-stats">
+                <div className="analytics-stat">
+                  <span className="stat-label">Current Streak</span>
+                  <span className="stat-value large">{calculateStreak(habit)} days</span>
+                </div>
+                <div className="analytics-stat">
+                  <span className="stat-label">Success Rate</span>
+                  <span className="stat-value large">{calculateSuccessRate(habit)}%</span>
+                </div>
+                <div className="analytics-stat">
+                  <span className="stat-label">Total Check-ins</span>
+                  <span className="stat-value large">{(habit.checkIns || []).length}</span>
+                </div>
+                <div className="analytics-stat">
+                  <span className="stat-label">Best Day</span>
+                  <span className="stat-value large">{getBestDay(habit)}</span>
+                </div>
+              </div>
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill"
+                  style={{ width: `${calculateSuccessRate(habit)}%` }}
+                ></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderDetails = () => {
+    if (!selectedHabit) return null;
+    
+    return (
+      <div className="details-view">
+        <button 
+          className="btn-back"
+          onClick={() => {
+            setSelectedHabit(null);
+            setActiveView('dashboard');
+          }}
+        >
+          ← Back
+        </button>
+        
+        <div className="details-header">
+          <div>
+            <span className="category-icon large">{getCategoryIcon(selectedHabit.category)}</span>
+            <h2>{selectedHabit.name}</h2>
+          </div>
+          <button 
+            className="btn-danger"
+            onClick={() => deleteHabit(selectedHabit.id)}
+          >
+            Delete Habit
+          </button>
+        </div>
+
+        <div className="details-meta">
+          <span className="badge">{selectedHabit.frequency}</span>
+          <span className="badge">{selectedHabit.category}</span>
+          <span className="badge">Started: {new Date(selectedHabit.startDate).toLocaleDateString()}</span>
+        </div>
+
+        <div className="details-stats">
+          <div className="stat-card">
+            <h3>Current Streak</h3>
+            <p className="stat-number">{calculateStreak(selectedHabit)} days</p>
+          </div>
+          <div className="stat-card">
+            <h3>Success Rate</h3>
+            <p className="stat-number">{calculateSuccessRate(selectedHabit)}%</p>
+          </div>
+          <div className="stat-card">
+            <h3>Total Check-ins</h3>
+            <p className="stat-number">{(selectedHabit.checkIns || []).length}</p>
+          </div>
+          <div className="stat-card">
+            <h3>Best Day</h3>
+            <p className="stat-number">{getBestDay(selectedHabit)}</p>
+          </div>
+        </div>
+
+        <div className="notes-section">
+          <h3>Notes</h3>
+          <div className="note-input">
+            <input
+              type="text"
+              placeholder="Add a note..."
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  addNote(selectedHabit.id, noteText);
+                  setNoteText('');
+                }
+              }}
+            />
+            <button 
+              className="btn-primary"
+              onClick={() => {
+                addNote(selectedHabit.id, noteText);
+                setNoteText('');
+              }}
+            >
+              Add
+            </button>
+          </div>
+          <div className="notes-list">
+            {(selectedHabit.notes || []).length === 0 ? (
+              <p className="empty-notes">No notes yet.</p>
+            ) : (
+              selectedHabit.notes.map(note => (
+                <div key={note.id} className="note-item">
+                  <p>{note.text}</p>
+                  <span className="note-date">{new Date(note.date).toLocaleDateString()}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="App">
+      <header className="app-header">
+        <div className="header-content">
+          <h1>🎯 Habit Hero</h1>
+          <p className="tagline">Build better routines and stay consistent</p>
+        </div>
+      </header>
+
+      <nav className="nav-bar">
+        <button 
+          className={`nav-btn ${activeView === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveView('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button 
+          className={`nav-btn ${activeView === 'calendar' ? 'active' : ''}`}
+          onClick={() => setActiveView('calendar')}
+        >
+          Calendar
+        </button>
+        <button 
+          className={`nav-btn ${activeView === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveView('analytics')}
+        >
+          Analytics
+        </button>
+      </nav>
+
+      <main className="main-content">
+        {activeView === 'dashboard' && renderDashboard()}
+        {activeView === 'calendar' && renderCalendar()}
+        {activeView === 'analytics' && renderAnalytics()}
+        {activeView === 'details' && renderDetails()}
+      </main>
+
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Create New Habit</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>Habit Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Morning Exercise"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Frequency</label>
+                <select
+                  name="frequency"
+                  value={formData.frequency}
+                  onChange={handleInputChange}
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Category</label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                >
+                  <option value="health">Health</option>
+                  <option value="work">Work</option>
+                  <option value="learning">Learning</option>
+                  <option value="fitness">Fitness</option>
+                  <option value="mental health">Mental Health</option>
+                  <option value="productivity">Productivity</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Start Date</label>
+                <input
+                  type="date"
+                  name="startDate"
+                  value={formData.startDate}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Habit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;

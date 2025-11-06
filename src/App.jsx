@@ -1,5 +1,7 @@
-import  { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
+
+const API_BASE = 'http://localhost:8000/api';
 
 function App() {
   const [habits, setHabits] = useState([]);
@@ -7,6 +9,7 @@ function App() {
   const [activeView, setActiveView] = useState('home');
   const [selectedHabit, setSelectedHabit] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [loading, setLoading] = useState(true);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -15,23 +18,27 @@ function App() {
     startDate: new Date().toISOString().split('T')[0]
   });
 
-  // Load habits from localStorage
   useEffect(() => {
-    const savedHabits = localStorage.getItem('habits');
-    if (savedHabits) {
-      setHabits(JSON.parse(savedHabits));
+    fetchHabits();
+  }, []);
+
+  useEffect(() => {
+    document.title = 'Habit Hero';
+  }, []);
+
+  const fetchHabits = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/habits/`);
+      if (response.ok) {
+        const data = await response.json();
+        setHabits(data);
+      }
+    } catch (error) {
+      console.error('Error fetching habits:', error);
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  // Set document title to app name
-  useEffect(() => {
-    document.title = 'Habit Hero  ';
-  }, []);
-
-  // Save habits to localStorage
-  useEffect(() => {
-    localStorage.setItem('habits', JSON.stringify(habits));
-  }, [habits]);
+  };
 
   const handleInputChange = (e) => {
     setFormData({
@@ -40,74 +47,112 @@ function App() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newHabit = {
-      id: Date.now(),
-      ...formData,
-      checkIns: [],
-      notes: []
+    
+    const dataToSend = {
+      name: formData.name,
+      frequency: formData.frequency,
+      category: formData.category,
+      start_date: formData.startDate
     };
-    setHabits([...habits, newHabit]);
-    setFormData({
-      name: '',
-      frequency: 'daily',
-      category: 'health',
-      startDate: new Date().toISOString().split('T')[0]
-    });
-    setShowForm(false);
-  };
-
-  const handleCheckIn = (habitId, date) => {
-    setHabits(prev => prev.map(habit => {
-      if (habit.id !== habitId) return habit;
-      const checkIns = habit.checkIns || [];
-      const dateStr = date || new Date().toISOString().split('T')[0];
-
-      if (checkIns.includes(dateStr)) {
-        return { ...habit, checkIns: checkIns.filter(d => d !== dateStr) };
+    
+    try {
+      const response = await fetch(`${API_BASE}/habits/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend)
+      });
+      
+      if (response.ok) {
+        const newHabit = await response.json();
+        setHabits([...habits, newHabit]);
+        setFormData({
+          name: '',
+          frequency: 'daily',
+          category: 'health',
+          startDate: new Date().toISOString().split('T')[0]
+        });
+        setShowForm(false);
+      } else {
+        const errorData = await response.json();
+        console.error('Error creating habit:', errorData);
+        alert('Error creating habit: ' + JSON.stringify(errorData));
       }
-
-      return { ...habit, checkIns: [...checkIns, dateStr] };
-    }));
+    } catch (error) {
+      console.error('Error creating habit:', error);
+      alert('Network error. Please try again.');
+    }
   };
 
-  const addNote = (habitId, note) => {
+  const handleCheckIn = async (habitId, date) => {
+    const dateStr = date || new Date().toISOString().split('T')[0];
+    
+    try {
+      const response = await fetch(`${API_BASE}/habits/${habitId}/checkin/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date: dateStr })
+      });
+      
+      if (response.ok) {
+        await fetchHabits();
+      }
+    } catch (error) {
+      console.error('Error checking in:', error);
+    }
+  };
+
+  const addNote = async (habitId, note) => {
     if (!note.trim()) return;
     
-    setHabits(habits.map(habit => {
-      if (habit.id === habitId) {
-        return {
-          ...habit,
-          notes: [...(habit.notes || []), {
-            id: Date.now(),
-            text: note,
-            date: new Date().toISOString().split('T')[0]
-          }]
-        };
+    try {
+      const response = await fetch(`${API_BASE}/habits/${habitId}/add_note/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: note })
+      });
+      
+      if (response.ok) {
+        await fetchHabits();
       }
-      return habit;
-    }));
+    } catch (error) {
+      console.error('Error adding note:', error);
+    }
   };
 
-  const deleteHabit = (habitId) => {
+  const deleteHabit = async (habitId) => {
     if (window.confirm('Are you sure you want to delete this habit?')) {
-      const newHabits = habits.filter(habit => habit.id !== habitId);
-      setHabits(newHabits);
-      setSelectedHabit(null);
-      setActiveView('home');
-      // reload after a short delay so localStorage is updated and UI fully refreshes
-      setTimeout(() => {
-        window.location.reload();
-      }, 150);
+      try {
+        const response = await fetch(`${API_BASE}/habits/${habitId}/`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          const newHabits = habits.filter(habit => habit.id !== habitId);
+          setHabits(newHabits);
+          setSelectedHabit(null);
+          setActiveView('home');
+        }
+      } catch (error) {
+        console.error('Error deleting habit:', error);
+      }
     }
   };
 
   const calculateStreak = (habit) => {
-    const checkIns = habit.checkIns || [];
+    const checkIns = habit.checkins || [];
     if (checkIns.length === 0) return 0;
     
-    const sortedDates = checkIns.sort((a, b) => new Date(b) - new Date(a));
+    const sortedDates = checkIns
+      .map(ci => ci.date)
+      .sort((a, b) => new Date(b) - new Date(a));
     let streak = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -129,22 +174,22 @@ function App() {
   };
 
   const calculateSuccessRate = (habit) => {
-    const startDate = new Date(habit.startDate);
+    const startDate = new Date(habit.start_date);
     const today = new Date();
     const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const checkIns = habit.checkIns || [];
+    const checkIns = habit.checkins || [];
     
     if (daysPassed <= 0) return 0;
     return Math.round((checkIns.length / daysPassed) * 100);
   };
 
   const getBestDay = (habit) => {
-    const checkIns = habit.checkIns || [];
+    const checkIns = habit.checkins || [];
     if (checkIns.length === 0) return 'No data';
     
     const dayCounts = {};
-    checkIns.forEach(dateStr => {
-      const day = new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' });
+    checkIns.forEach(ci => {
+      const day = new Date(ci.date).toLocaleDateString('en-US', { weekday: 'long' });
       dayCounts[day] = (dayCounts[day] || 0) + 1;
     });
     
@@ -162,7 +207,7 @@ function App() {
 
   const isCheckedToday = (habit) => {
     const today = new Date().toISOString().split('T')[0];
-    return (habit.checkIns || []).includes(today);
+    return (habit.checkins || []).some(ci => ci.date === today);
   };
 
   const getCategoryIcon = (category) => {
@@ -227,7 +272,9 @@ function App() {
           </button>
         </div>
 
-        {habits.length === 0 ? (
+        {loading ? (
+          <div className="loading">Loading habits...</div>
+        ) : habits.length === 0 ? (
           <div className="empty-state">
             <p>No habits yet. Start building better routines!</p>
           </div>
@@ -299,7 +346,7 @@ function App() {
                 </div>
                 <div className="day-habits">
                   {habits.map(habit => {
-                    const isChecked = (habit.checkIns || []).includes(dateStr);
+                    const isChecked = (habit.checkins || []).some(ci => ci.date === dateStr);
                     return (
                       <div 
                         key={habit.id}
@@ -348,7 +395,7 @@ function App() {
                 </div>
                 <div className="analytics-stat">
                   <span className="stat-label">Total Check-ins</span>
-                  <span className="stat-value large">{(habit.checkIns || []).length}</span>
+                  <span className="stat-value large">{(habit.checkins || []).length}</span>
                 </div>
                 <div className="analytics-stat">
                   <span className="stat-label">Best Day</span>
@@ -399,7 +446,7 @@ function App() {
         <div className="details-meta">
           <span className="badge">{selectedHabit.frequency}</span>
           <span className="badge">{selectedHabit.category}</span>
-          <span className="badge">Started: {new Date(selectedHabit.startDate).toLocaleDateString()}</span>
+          <span className="badge">Started: {new Date(selectedHabit.start_date).toLocaleDateString()}</span>
         </div>
 
         <div className="details-stats">
@@ -413,7 +460,7 @@ function App() {
           </div>
           <div className="stat-card">
             <h3>Total Check-ins</h3>
-            <p className="stat-number">{(selectedHabit.checkIns || []).length}</p>
+            <p className="stat-number">{(selectedHabit.checkins || []).length}</p>
           </div>
           <div className="stat-card">
             <h3>Best Day</h3>
@@ -469,7 +516,6 @@ function App() {
         <div className="nav-left">
           <div className="header-content">
             <h1>Habit Hero</h1>
-           
           </div>
         </div>
       </nav>
